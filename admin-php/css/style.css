@@ -1,0 +1,19 @@
+body {
+    min-height: 100vh;
+}
+
+.card {
+    border-radius: 14px;
+}
+
+.table th {
+    white-space: nowrap;
+}
+
+.product-thumb {
+    width: 60px;
+    height: 75px;
+    object-fit: cover;
+    border-radius: 8px;
+    background: #f1f1f1;
+}

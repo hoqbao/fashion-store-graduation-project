@@ -1,0 +1,248 @@
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    min-width: 320px;
+    background-color: #ffffff;
+    color: #212529;
+    font-family: Arial, Helvetica, sans-serif;
+}
+.hero-section {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(33, 37, 41, 0.12), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(33, 37, 41, 0.08), transparent 30%),
+    linear-gradient(135deg, #f8f9fa 0%, #ffffff 55%, #f1f3f5 100%);
+}
+
+.hero-pattern {
+  position: absolute;
+  border-radius: 999px;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(33, 37, 41, 0.08),
+    rgba(33, 37, 41, 0.08) 6px,
+    transparent 6px,
+    transparent 14px
+  );
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.hero-pattern-1 {
+  width: 220px;
+  height: 220px;
+  top: -80px;
+  right: 8%;
+}
+
+.hero-pattern-2 {
+  width: 160px;
+  height: 160px;
+  bottom: -60px;
+  left: 6%;
+}
+
+.hero-dot {
+  width: 10px;
+  height: 10px;
+  background: #212529;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.hero-title {
+  letter-spacing: -1.5px;
+  line-height: 1.12;
+}
+
+.hero-description {
+  max-width: 680px;
+}
+
+.hero-stats {
+  max-width: 620px;
+}
+
+.hero-stat-box {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(33, 37, 41, 0.08);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 12px 30px rgba(33, 37, 41, 0.06);
+  height: 100%;
+}
+
+.hero-card-wrapper {
+  position: relative;
+}
+
+.hero-card-wrapper::before {
+  content: "";
+  position: absolute;
+  inset: 28px -18px -18px 28px;
+  border-radius: 28px;
+  border: 2px dashed rgba(33, 37, 41, 0.18);
+  z-index: 0;
+}
+
+.hero-card {
+  position: relative;
+  z-index: 1;
+  min-height: 330px;
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,255,255,0.86)),
+    radial-gradient(circle at top right, rgba(33,37,41,0.18), transparent 35%);
+  border: 1px solid rgba(33, 37, 41, 0.08);
+  padding: 32px;
+  overflow: hidden;
+}
+
+.hero-card::after {
+  content: "";
+  position: absolute;
+  width: 190px;
+  height: 190px;
+  right: -70px;
+  bottom: -70px;
+  border-radius: 999px;
+  background: rgba(33, 37, 41, 0.08);
+}
+
+.hero-card-badge {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  background: #212529;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hero-card-content {
+  position: relative;
+  z-index: 2;
+  margin-top: 55px;
+}
+
+.hero-tag {
+  display: inline-block;
+  padding: 8px 12px;
+  background: #f1f3f5;
+  border: 1px solid rgba(33, 37, 41, 0.08);
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .hero-title {
+    font-size: 2.4rem;
+  }
+
+  .hero-card {
+    min-height: auto;
+  }
+
+  .hero-card-wrapper::before {
+    display: none;
+  }
+}
+
+.site-footer {
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.08), transparent 30%),
+    linear-gradient(135deg, #161a1d 0%, #212529 60%, #111315 100%);
+  color: #ffffff;
+  position: relative;
+  overflow: hidden;
+}
+
+.site-footer::before {
+  content: "";
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  right: -90px;
+  top: -90px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.footer-brand {
+  font-size: 1.65rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.footer-text {
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.8;
+  max-width: 420px;
+}
+
+.footer-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 18px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.footer-list,
+.footer-contact {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.footer-list li,
+.footer-contact li {
+  margin-bottom: 12px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.footer-list a {
+  color: rgba(255, 255, 255, 0.72);
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.footer-list a:hover {
+  color: #ffffff;
+  padding-left: 4px;
+}
+
+.footer-contact strong {
+  color: #ffffff;
+}
+
+.footer-social {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.footer-bottom {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.95rem;
+}
