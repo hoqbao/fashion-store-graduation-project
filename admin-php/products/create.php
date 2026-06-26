@@ -48,14 +48,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $prices = $_POST["variant_price"] ?? [];
     $stocks = $_POST["stock"] ?? [];
 
-    $imageUrl = null;
-
-    try {
-        $imageUrl = uploadProductImage($_FILES["image"] ?? null);
-    } catch (Exception $e) {
-        $errors[] = $e->getMessage();
-    }
-
     if ($name === "") {
         $errors[] = "Vui lòng nhập tên sản phẩm.";
     }
@@ -77,7 +69,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $variantPrice = trim($prices[$i] ?? "");
         $stock = trim($stocks[$i] ?? "");
 
-        if ($sku === "" && $size === "" && $color === "" && $variantPrice === "" && $stock === "") {
+        if (
+            $sku === "" &&
+            $size === "" &&
+            $color === "" &&
+            $variantPrice === "" &&
+            $stock === ""
+        ) {
             continue;
         }
 
@@ -120,14 +118,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             $slug = createSlug($name) . "-" . time();
 
-            $stmt = $pdo->prepare("
+            $insertProductStmt = $pdo->prepare("
                 INSERT INTO products
                     (category_id, name, slug, description, base_price, status, created_at, updated_at)
                 VALUES
                     (:category_id, :name, :slug, :description, :base_price, :status, NOW(), NOW())
             ");
 
-            $stmt->execute([
+            $insertProductStmt->execute([
                 ":category_id" => $categoryId,
                 ":name" => $name,
                 ":slug" => $slug,
@@ -138,21 +136,45 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             $productId = $pdo->lastInsertId();
 
-            if ($imageUrl) {
-                $stmt = $pdo->prepare("
-                    INSERT INTO product_images
-                        (product_id, image_url, created_at, updated_at)
-                    VALUES
-                        (:product_id, :image_url, NOW(), NOW())
-                ");
+            if (
+                isset($_FILES["images"]) &&
+                isset($_FILES["images"]["name"]) &&
+                is_array($_FILES["images"]["name"])
+            ) {
+                foreach ($_FILES["images"]["name"] as $index => $fileName) {
+                    $fileError = $_FILES["images"]["error"][$index] ?? UPLOAD_ERR_NO_FILE;
 
-                $stmt->execute([
-                    ":product_id" => $productId,
-                    ":image_url" => $imageUrl
-                ]);
+                    if ($fileError === UPLOAD_ERR_NO_FILE) {
+                        continue;
+                    }
+
+                    $singleFile = [
+                        "name" => $_FILES["images"]["name"][$index],
+                        "type" => $_FILES["images"]["type"][$index],
+                        "tmp_name" => $_FILES["images"]["tmp_name"][$index],
+                        "error" => $_FILES["images"]["error"][$index],
+                        "size" => $_FILES["images"]["size"][$index]
+                    ];
+
+                    $imageUrl = uploadProductImage($singleFile);
+
+                    if ($imageUrl) {
+                        $insertImageStmt = $pdo->prepare("
+                            INSERT INTO product_images
+                                (product_id, image_url, created_at, updated_at)
+                            VALUES
+                                (:product_id, :image_url, NOW(), NOW())
+                        ");
+
+                        $insertImageStmt->execute([
+                            ":product_id" => $productId,
+                            ":image_url" => $imageUrl
+                        ]);
+                    }
+                }
             }
 
-            $stmt = $pdo->prepare("
+            $insertVariantStmt = $pdo->prepare("
                 INSERT INTO product_variants
                     (product_id, sku, size, color, price, stock, status, created_at, updated_at)
                 VALUES
@@ -160,7 +182,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             ");
 
             foreach ($validVariants as $variant) {
-                $stmt->execute([
+                $insertVariantStmt->execute([
                     ":product_id" => $productId,
                     ":sku" => $variant["sku"],
                     ":size" => $variant["size"],
@@ -174,7 +196,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             header("Location: index.php");
             exit;
-        } catch (PDOException $e) {
+        } catch (Exception $e) {
             $pdo->rollBack();
             $errors[] = "Không thể thêm sản phẩm: " . $e->getMessage();
         }
@@ -284,11 +306,17 @@ require_once __DIR__ . "/../includes/header.php";
                             </label>
 
                             <select name="status" class="form-select">
-                                <option value="ACTIVE">
+                                <option
+                                    value="ACTIVE"
+                                    <?= (($_POST["status"] ?? "ACTIVE") === "ACTIVE") ? "selected" : "" ?>
+                                >
                                     Đang bán
                                 </option>
 
-                                <option value="INACTIVE">
+                                <option
+                                    value="INACTIVE"
+                                    <?= (($_POST["status"] ?? "") === "INACTIVE") ? "selected" : "" ?>
+                                >
                                     Ngừng bán
                                 </option>
                             </select>
@@ -438,15 +466,35 @@ require_once __DIR__ . "/../includes/header.php";
                                 Chọn ảnh từ máy
                             </label>
 
-                            <input
-                                type="file"
-                                name="image"
-                                class="form-control"
-                                accept="image/jpeg,image/png,image/webp"
-                            >
+                            <div id="imageInputs">
+                                <div class="input-group mb-2">
+                                    <input
+                                        type="file"
+                                        name="images[]"
+                                        class="form-control"
+                                        accept="image/jpeg,image/png,image/webp"
+                                    >
 
-                            <div class="form-text">
-                                Hỗ trợ JPG, PNG, WEBP.
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline-danger"
+                                        onclick="removeImageInput(this)"
+                                    >
+                                        Xóa
+                                    </button>
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-outline-dark mt-2"
+                                onclick="addImageInput()"
+                            >
+                                Thêm ảnh
+                            </button>
+
+                            <div class="form-text mt-2">
+                                Mỗi ô chọn 1 ảnh. Bấm “Thêm ảnh” để thêm nhiều hình ảnh cho cùng một sản phẩm.
                             </div>
                         </div>
                     </div>
@@ -557,6 +605,43 @@ function removeVariantRow(button) {
     }
 
     button.closest("tr").remove();
+}
+
+function addImageInput() {
+    const imageInputs = document.getElementById("imageInputs");
+
+    const div = document.createElement("div");
+    div.className = "input-group mb-2";
+
+    div.innerHTML = `
+        <input
+            type="file"
+            name="images[]"
+            class="form-control"
+            accept="image/jpeg,image/png,image/webp"
+        >
+
+        <button
+            type="button"
+            class="btn btn-outline-danger"
+            onclick="removeImageInput(this)"
+        >
+            Xóa
+        </button>
+    `;
+
+    imageInputs.appendChild(div);
+}
+
+function removeImageInput(button) {
+    const imageInputs = document.getElementById("imageInputs");
+
+    if (imageInputs.children.length <= 1) {
+        alert("Phải có ít nhất 1 ô chọn ảnh.");
+        return;
+    }
+
+    button.closest(".input-group").remove();
 }
 </script>
 

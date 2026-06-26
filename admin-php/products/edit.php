@@ -1,10 +1,9 @@
 <?php
-require_once __DIR__ . "/../config/database.php";
-require_once __DIR__ . "/../includes/upload.php";
 require_once __DIR__ . "/../includes/auth.php";
 requireAdmin();
 
-$errors = [];
+require_once __DIR__ . "/../config/database.php";
+require_once __DIR__ . "/../includes/upload.php";
 
 $id = $_GET["id"] ?? null;
 
@@ -13,101 +12,262 @@ if (!$id || !is_numeric($id)) {
     exit;
 }
 
-$categories = $pdo
-    ->query("SELECT id, name FROM categories ORDER BY name ASC")
-    ->fetchAll();
+function createSlug($text)
+{
+    $text = trim($text);
+    $text = mb_strtolower($text, "UTF-8");
 
-$stmt = $pdo->prepare("
-    SELECT *
-    FROM products
-    WHERE id = :id
-    LIMIT 1
+    $vietnamese = [
+        "à",
+        "á",
+        "ạ",
+        "ả",
+        "ã",
+        "â",
+        "ầ",
+        "ấ",
+        "ậ",
+        "ẩ",
+        "ẫ",
+        "ă",
+        "ằ",
+        "ắ",
+        "ặ",
+        "ẳ",
+        "ẵ",
+        "è",
+        "é",
+        "ẹ",
+        "ẻ",
+        "ẽ",
+        "ê",
+        "ề",
+        "ế",
+        "ệ",
+        "ể",
+        "ễ",
+        "ì",
+        "í",
+        "ị",
+        "ỉ",
+        "ĩ",
+        "ò",
+        "ó",
+        "ọ",
+        "ỏ",
+        "õ",
+        "ô",
+        "ồ",
+        "ố",
+        "ộ",
+        "ổ",
+        "ỗ",
+        "ơ",
+        "ờ",
+        "ớ",
+        "ợ",
+        "ở",
+        "ỡ",
+        "ù",
+        "ú",
+        "ụ",
+        "ủ",
+        "ũ",
+        "ư",
+        "ừ",
+        "ứ",
+        "ự",
+        "ử",
+        "ữ",
+        "ỳ",
+        "ý",
+        "ỵ",
+        "ỷ",
+        "ỹ",
+        "đ"
+    ];
+
+    $latin = [
+        "a",
+        "a",
+        "a",
+        "a",
+        "a",
+        "a",
+        "a",
+        "a",
+        "a",
+        "a",
+        "a",
+        "a",
+        "a",
+        "a",
+        "a",
+        "a",
+        "a",
+        "e",
+        "e",
+        "e",
+        "e",
+        "e",
+        "e",
+        "e",
+        "e",
+        "e",
+        "e",
+        "e",
+        "i",
+        "i",
+        "i",
+        "i",
+        "i",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "u",
+        "u",
+        "u",
+        "u",
+        "u",
+        "u",
+        "u",
+        "u",
+        "u",
+        "u",
+        "u",
+        "y",
+        "y",
+        "y",
+        "y",
+        "y",
+        "d"
+    ];
+
+    $text = str_replace($vietnamese, $latin, $text);
+    $text = preg_replace("/[^a-z0-9]+/", "-", $text);
+    $text = trim($text, "-");
+
+    return $text;
+}
+
+function generateSku($productId, $size, $color)
+{
+    $base = "P" . $productId . "-" . createSlug($size) . "-" . createSlug($color);
+    $base = strtoupper($base);
+
+    return $base . "-" . strtoupper(substr(uniqid(), -6));
+}
+
+function reloadProductData($pdo, $id)
+{
+    $productStmt = $pdo->prepare("
+        SELECT *
+        FROM products
+        WHERE id = :id
+        LIMIT 1
+    ");
+
+    $productStmt->execute([
+        ":id" => $id
+    ]);
+
+    $product = $productStmt->fetch();
+
+    $imageStmt = $pdo->prepare("
+        SELECT *
+        FROM product_images
+        WHERE product_id = :product_id
+        ORDER BY id ASC
+    ");
+
+    $imageStmt->execute([
+        ":product_id" => $id
+    ]);
+
+    $images = $imageStmt->fetchAll();
+
+    $variantsStmt = $pdo->prepare("
+        SELECT *
+        FROM product_variants
+        WHERE product_id = :product_id
+        ORDER BY id ASC
+    ");
+
+    $variantsStmt->execute([
+        ":product_id" => $id
+    ]);
+
+    $variants = $variantsStmt->fetchAll();
+
+    return [$product, $images, $variants];
+}
+
+$error = "";
+$success = "";
+
+$categoriesStmt = $pdo->query("
+    SELECT id, name
+    FROM categories
+    ORDER BY id ASC
 ");
-$stmt->execute([":id" => $id]);
-$product = $stmt->fetch();
+
+$categories = $categoriesStmt->fetchAll();
+
+[$product, $images, $variants] = reloadProductData($pdo, $id);
 
 if (!$product) {
     header("Location: index.php");
     exit;
 }
 
-$stmt = $pdo->prepare("
-    SELECT *
-    FROM product_images
-    WHERE product_id = :product_id
-    ORDER BY id ASC
-    LIMIT 1
-");
-$stmt->execute([":product_id" => $id]);
-$productImage = $stmt->fetch();
-
-$stmt = $pdo->prepare("
-    SELECT *
-    FROM product_variants
-    WHERE product_id = :product_id
-    ORDER BY id ASC
-    LIMIT 1
-");
-$stmt->execute([":product_id" => $id]);
-$productVariant = $stmt->fetch();
-
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $name = trim($_POST["name"] ?? "");
     $categoryId = $_POST["category_id"] ?? "";
     $description = trim($_POST["description"] ?? "");
-    $basePrice = $_POST["base_price"] ?? "";
+    $basePrice = $_POST["base_price"] ?? 0;
     $status = $_POST["status"] ?? "ACTIVE";
 
-    $imageUrl = null;
-
-    try {
-        $imageUrl = uploadProductImage($_FILES["image"] ?? null);
-    } catch (Exception $e) {
-        $errors[] = $e->getMessage();
-    }
-
-    $sku = trim($_POST["sku"] ?? "");
-    $size = trim($_POST["size"] ?? "");
-    $color = trim($_POST["color"] ?? "");
-    $stock = $_POST["stock"] ?? 0;
+    $variantIds = $_POST["variant_id"] ?? [];
+    $variantSizes = $_POST["variant_size"] ?? [];
+    $variantColors = $_POST["variant_color"] ?? [];
+    $variantPrices = $_POST["variant_price"] ?? [];
+    $variantStocks = $_POST["variant_stock"] ?? [];
+    $variantStatuses = $_POST["variant_status"] ?? [];
+    $deleteVariantIds = $_POST["delete_variant"] ?? [];
+    $deleteImageIds = $_POST["delete_image"] ?? [];
 
     if ($name === "") {
-        $errors[] = "Vui lòng nhập tên sản phẩm.";
-    }
-
-    if ($categoryId === "") {
-        $errors[] = "Vui lòng chọn danh mục.";
-    }
-
-    if ($basePrice === "" || !is_numeric($basePrice) || $basePrice <= 0) {
-        $errors[] = "Giá sản phẩm không hợp lệ.";
-    }
-
-    if ($sku === "") {
-        $errors[] = "Vui lòng nhập mã SKU.";
-    }
-
-    if ($size === "") {
-        $errors[] = "Vui lòng nhập size.";
-    }
-
-    if ($color === "") {
-        $errors[] = "Vui lòng nhập màu sắc.";
-    }
-
-    if (!is_numeric($stock) || $stock < 0) {
-        $errors[] = "Số lượng tồn kho không hợp lệ.";
-    }
-
-    if (empty($errors)) {
+        $error = "Vui lòng nhập tên sản phẩm.";
+    } elseif ($categoryId === "") {
+        $error = "Vui lòng chọn danh mục.";
+    } elseif (!is_numeric($basePrice) || $basePrice <= 0) {
+        $error = "Giá gốc không hợp lệ.";
+    } else {
         try {
             $pdo->beginTransaction();
 
-            $stmt = $pdo->prepare("
+            $slug = createSlug($name);
+
+            $updateProductStmt = $pdo->prepare("
                 UPDATE products
-                SET
+                SET 
                     category_id = :category_id,
                     name = :name,
+                    slug = :slug,
                     description = :description,
                     base_price = :base_price,
                     status = :status,
@@ -115,95 +275,240 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 WHERE id = :id
             ");
 
-            $stmt->execute([
+            $updateProductStmt->execute([
                 ":category_id" => $categoryId,
                 ":name" => $name,
+                ":slug" => $slug,
                 ":description" => $description,
                 ":base_price" => $basePrice,
                 ":status" => $status,
                 ":id" => $id
             ]);
 
-            if ($imageUrl) {
-                if ($productImage) {
-                    $stmt = $pdo->prepare("
-                        UPDATE product_images
-                        SET image_url = :image_url,
+            if (
+                isset($_FILES["images"]) &&
+                isset($_FILES["images"]["name"]) &&
+                is_array($_FILES["images"]["name"])
+            ) {
+                foreach ($_FILES["images"]["name"] as $index => $fileName) {
+                    if ($_FILES["images"]["error"][$index] === UPLOAD_ERR_NO_FILE) {
+                        continue;
+                    }
+
+                    $singleFile = [
+                        "name" => $_FILES["images"]["name"][$index],
+                        "type" => $_FILES["images"]["type"][$index],
+                        "tmp_name" => $_FILES["images"]["tmp_name"][$index],
+                        "error" => $_FILES["images"]["error"][$index],
+                        "size" => $_FILES["images"]["size"][$index]
+                    ];
+
+                    $imageUrl = uploadProductImage($singleFile);
+
+                    if ($imageUrl) {
+                        $insertImageStmt = $pdo->prepare("
+                INSERT INTO product_images
+                    (product_id, image_url, created_at, updated_at)
+                VALUES
+                    (:product_id, :image_url, NOW(), NOW())
+            ");
+
+                        $insertImageStmt->execute([
+                            ":product_id" => $id,
+                            ":image_url" => $imageUrl
+                        ]);
+                    }
+                }
+            }
+            foreach ($deleteImageIds as $deleteImageId) {
+                if (!is_numeric($deleteImageId)) {
+                    continue;
+                }
+
+                $imageSelectStmt = $pdo->prepare("
+        SELECT image_url
+        FROM product_images
+        WHERE id = :id
+          AND product_id = :product_id
+        LIMIT 1
+    ");
+
+                $imageSelectStmt->execute([
+                    ":id" => $deleteImageId,
+                    ":product_id" => $id
+                ]);
+
+                $image = $imageSelectStmt->fetch();
+
+                if ($image) {
+                    $deleteImageStmt = $pdo->prepare("
+            DELETE FROM product_images
+            WHERE id = :id
+              AND product_id = :product_id
+        ");
+
+                    $deleteImageStmt->execute([
+                        ":id" => $deleteImageId,
+                        ":product_id" => $id
+                    ]);
+
+                    $imageUrl = $image["image_url"];
+
+                    $relativePath = str_replace(
+                        "http://localhost/fashion-store-admin/",
+                        "",
+                        $imageUrl
+                    );
+
+                    $filePath = __DIR__ . "/../" . $relativePath;
+
+                    if (is_file($filePath)) {
+                        unlink($filePath);
+                    }
+                }
+            }
+            foreach ($variantSizes as $index => $size) {
+                $variantId = trim($variantIds[$index] ?? "");
+                $size = trim($size);
+                $color = trim($variantColors[$index] ?? "");
+                $price = $variantPrices[$index] ?? 0;
+                $stock = $variantStocks[$index] ?? 0;
+                $variantStatus = $variantStatuses[$index] ?? "ACTIVE";
+
+                if ($size === "" && $color === "" && $price === "" && $stock === "") {
+                    continue;
+                }
+
+                if ($size === "") {
+                    throw new Exception("Vui lòng nhập size cho tất cả biến thể.");
+                }
+
+                if ($color === "") {
+                    throw new Exception("Vui lòng nhập màu cho tất cả biến thể.");
+                }
+
+                if (!is_numeric($price) || $price <= 0) {
+                    throw new Exception("Giá của biến thể không hợp lệ.");
+                }
+
+                if (!is_numeric($stock) || $stock < 0) {
+                    throw new Exception("Số lượng tồn kho không hợp lệ.");
+                }
+
+                if ($variantId !== "") {
+                    $updateVariantStmt = $pdo->prepare("
+                        UPDATE product_variants
+                        SET 
+                            size = :size,
+                            color = :color,
+                            price = :price,
+                            stock = :stock,
+                            status = :status,
                             updated_at = NOW()
                         WHERE id = :id
+                          AND product_id = :product_id
                     ");
 
-                    $stmt->execute([
-                        ":image_url" => $imageUrl,
-                        ":id" => $productImage["id"]
+                    $updateVariantStmt->execute([
+                        ":size" => $size,
+                        ":color" => $color,
+                        ":price" => $price,
+                        ":stock" => $stock,
+                        ":status" => $variantStatus,
+                        ":id" => $variantId,
+                        ":product_id" => $id
                     ]);
                 } else {
-                    $stmt = $pdo->prepare("
-                        INSERT INTO product_images
-                            (product_id, image_url, created_at, updated_at)
-                        VALUES
-                            (:product_id, :image_url, NOW(), NOW())
+                    $checkVariantStmt = $pdo->prepare("
+                        SELECT id
+                        FROM product_variants
+                        WHERE product_id = :product_id
+                          AND size = :size
+                          AND color = :color
+                        LIMIT 1
                     ");
 
-                    $stmt->execute([
+                    $checkVariantStmt->execute([
                         ":product_id" => $id,
-                        ":image_url" => $imageUrl
+                        ":size" => $size,
+                        ":color" => $color
                     ]);
+
+                    $existingVariant = $checkVariantStmt->fetch();
+
+                    if ($existingVariant) {
+                        $updateExistingVariantStmt = $pdo->prepare("
+                            UPDATE product_variants
+                            SET 
+                                price = :price,
+                                stock = :stock,
+                                status = :status,
+                                updated_at = NOW()
+                            WHERE id = :id
+                              AND product_id = :product_id
+                        ");
+
+                        $updateExistingVariantStmt->execute([
+                            ":price" => $price,
+                            ":stock" => $stock,
+                            ":status" => $variantStatus,
+                            ":id" => $existingVariant["id"],
+                            ":product_id" => $id
+                        ]);
+                    } else {
+                        $sku = generateSku($id, $size, $color);
+
+                        $insertVariantStmt = $pdo->prepare("
+                            INSERT INTO product_variants
+                                (product_id, sku, size, color, price, stock, status, created_at, updated_at)
+                            VALUES
+                                (:product_id, :sku, :size, :color, :price, :stock, :status, NOW(), NOW())
+                        ");
+
+                        $insertVariantStmt->execute([
+                            ":product_id" => $id,
+                            ":sku" => $sku,
+                            ":size" => $size,
+                            ":color" => $color,
+                            ":price" => $price,
+                            ":stock" => $stock,
+                            ":status" => $variantStatus
+                        ]);
+                    }
                 }
             }
 
-            if ($productVariant) {
-                $stmt = $pdo->prepare("
+            foreach ($deleteVariantIds as $deleteVariantId) {
+                $deleteVariantStmt = $pdo->prepare("
                     UPDATE product_variants
-                    SET
-                        sku = :sku,
-                        size = :size,
-                        color = :color,
-                        price = :price,
-                        stock = :stock,
-                        status = :status,
+                    SET status = 'INACTIVE',
                         updated_at = NOW()
                     WHERE id = :id
+                      AND product_id = :product_id
                 ");
 
-                $stmt->execute([
-                    ":sku" => $sku,
-                    ":size" => $size,
-                    ":color" => $color,
-                    ":price" => $basePrice,
-                    ":stock" => $stock,
-                    ":status" => $status,
-                    ":id" => $productVariant["id"]
-                ]);
-            } else {
-                $stmt = $pdo->prepare("
-                    INSERT INTO product_variants
-                        (product_id, sku, size, color, price, stock, status, created_at, updated_at)
-                    VALUES
-                        (:product_id, :sku, :size, :color, :price, :stock, :status, NOW(), NOW())
-                ");
-
-                $stmt->execute([
-                    ":product_id" => $id,
-                    ":sku" => $sku,
-                    ":size" => $size,
-                    ":color" => $color,
-                    ":price" => $basePrice,
-                    ":stock" => $stock,
-                    ":status" => $status
+                $deleteVariantStmt->execute([
+                    ":id" => $deleteVariantId,
+                    ":product_id" => $id
                 ]);
             }
 
             $pdo->commit();
 
-            header("Location: index.php");
+            header("Location: edit.php?id=" . $id . "&success=updated");
             exit;
-        } catch (PDOException $e) {
+        } catch (Exception $e) {
             $pdo->rollBack();
-            $errors[] = "Không thể cập nhật sản phẩm: " . $e->getMessage();
+            $error = "Không thể cập nhật sản phẩm: " . $e->getMessage();
         }
     }
 }
+
+if (isset($_GET["success"]) && $_GET["success"] === "updated") {
+    $success = "Cập nhật sản phẩm thành công.";
+}
+
+[$product, $images, $variants] = reloadProductData($pdo, $id);
 
 require_once __DIR__ . "/../includes/header.php";
 ?>
@@ -212,10 +517,12 @@ require_once __DIR__ . "/../includes/header.php";
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <p class="text-uppercase text-secondary fw-semibold mb-1">
-                Quản trị sản phẩm
+                Sản phẩm
             </p>
 
-            <h1 class="fw-bold mb-0">Sửa sản phẩm</h1>
+            <h1 class="fw-bold mb-0">
+                Sửa sản phẩm
+            </h1>
         </div>
 
         <a href="index.php" class="btn btn-outline-dark">
@@ -223,36 +530,44 @@ require_once __DIR__ . "/../includes/header.php";
         </a>
     </div>
 
-    <?php if (!empty($errors)): ?>
+    <?php if ($error): ?>
         <div class="alert alert-danger">
-            <ul class="mb-0">
-                <?php foreach ($errors as $error): ?>
-                    <li><?= htmlspecialchars($error) ?></li>
-                <?php endforeach; ?>
-            </ul>
+            <?= htmlspecialchars($error) ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($success): ?>
+        <div class="alert alert-success">
+            <?= htmlspecialchars($success) ?>
         </div>
     <?php endif; ?>
 
     <form method="POST" enctype="multipart/form-data">
         <div class="row g-4">
             <div class="col-lg-8">
-                <div class="card border-0 shadow-sm">
+                <div class="card border-0 shadow-sm mb-4">
                     <div class="card-body p-4">
-                        <h2 class="h4 fw-bold mb-4">Thông tin sản phẩm</h2>
+                        <h2 class="h5 fw-bold mb-4">
+                            Thông tin sản phẩm
+                        </h2>
 
                         <div class="mb-3">
-                            <label class="form-label">Tên sản phẩm</label>
+                            <label class="form-label">
+                                Tên sản phẩm
+                            </label>
 
                             <input
                                 type="text"
                                 name="name"
                                 class="form-control"
-                                value="<?= htmlspecialchars($_POST["name"] ?? $product["name"]) ?>"
+                                value="<?= htmlspecialchars($product["name"]) ?>"
                                 required>
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label">Danh mục</label>
+                            <label class="form-label">
+                                Danh mục
+                            </label>
 
                             <select name="category_id" class="form-select" required>
                                 <option value="">-- Chọn danh mục --</option>
@@ -260,7 +575,7 @@ require_once __DIR__ . "/../includes/header.php";
                                 <?php foreach ($categories as $category): ?>
                                     <option
                                         value="<?= $category["id"] ?>"
-                                        <?= (($_POST["category_id"] ?? $product["category_id"]) == $category["id"]) ? "selected" : "" ?>>
+                                        <?= $product["category_id"] == $category["id"] ? "selected" : "" ?>>
                                         <?= htmlspecialchars($category["name"]) ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -268,41 +583,208 @@ require_once __DIR__ . "/../includes/header.php";
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label">Mô tả</label>
-
-                            <textarea
-                                name="description"
-                                class="form-control"
-                                rows="5"><?= htmlspecialchars($_POST["description"] ?? $product["description"] ?? "") ?></textarea>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Giá bán</label>
+                            <label class="form-label">
+                                Giá gốc
+                            </label>
 
                             <input
                                 type="number"
                                 name="base_price"
                                 class="form-control"
-                                value="<?= htmlspecialchars($_POST["base_price"] ?? $product["base_price"]) ?>"
+                                value="<?= htmlspecialchars($product["base_price"]) ?>"
                                 min="0"
                                 required>
                         </div>
 
-                        <div class="mb-0">
-                            <label class="form-label">Trạng thái</label>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Mô tả
+                            </label>
 
-                            <?php $currentStatus = $_POST["status"] ?? $product["status"]; ?>
+                            <textarea
+                                name="description"
+                                class="form-control"
+                                rows="5"><?= htmlspecialchars($product["description"]) ?></textarea>
+                        </div>
+
+                        <div class="mb-0">
+                            <label class="form-label">
+                                Trạng thái sản phẩm
+                            </label>
 
                             <select name="status" class="form-select">
-                                <option value="ACTIVE" <?= $currentStatus === "ACTIVE" ? "selected" : "" ?>>
+                                <option
+                                    value="ACTIVE"
+                                    <?= $product["status"] === "ACTIVE" ? "selected" : "" ?>>
                                     Đang bán
                                 </option>
 
-                                <option value="INACTIVE" <?= $currentStatus === "INACTIVE" ? "selected" : "" ?>>
+                                <option
+                                    value="INACTIVE"
+                                    <?= $product["status"] === "INACTIVE" ? "selected" : "" ?>>
                                     Ngừng bán
                                 </option>
                             </select>
                         </div>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <div>
+                                <h2 class="h5 fw-bold mb-1">
+                                    Size, màu, giá và tồn kho
+                                </h2>
+
+                                <p class="text-secondary mb-0">
+                                    Mỗi dòng là một biến thể sản phẩm. Ví dụ: M - Đen, L - Xanh rêu.
+                                </p>
+                            </div>
+
+                            <button
+                                type="button"
+                                class="btn btn-outline-dark btn-sm"
+                                onclick="addVariantRow()">
+                                Thêm size/màu
+                            </button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="min-width: 160px;">SKU</th>
+                                        <th style="min-width: 110px;">Size</th>
+                                        <th style="min-width: 150px;">Màu</th>
+                                        <th style="min-width: 140px;">Giá</th>
+                                        <th style="min-width: 120px;">Tồn kho</th>
+                                        <th style="min-width: 140px;">Trạng thái</th>
+                                        <th class="text-center">Ẩn</th>
+                                    </tr>
+                                </thead>
+
+                                <tbody id="variantRows">
+                                    <?php foreach ($variants as $variant): ?>
+                                        <tr>
+                                            <td>
+                                                <span class="badge text-bg-light border">
+                                                    <?= htmlspecialchars($variant["sku"]) ?>
+                                                </span>
+
+                                                <input
+                                                    type="hidden"
+                                                    name="variant_id[]"
+                                                    value="<?= $variant["id"] ?>">
+                                            </td>
+
+                                            <td>
+                                                <input
+                                                    type="text"
+                                                    name="variant_size[]"
+                                                    class="form-control"
+                                                    value="<?= htmlspecialchars($variant["size"]) ?>"
+                                                    required>
+                                            </td>
+
+                                            <td>
+                                                <input
+                                                    type="text"
+                                                    name="variant_color[]"
+                                                    class="form-control"
+                                                    value="<?= htmlspecialchars($variant["color"]) ?>"
+                                                    required>
+                                            </td>
+
+                                            <td>
+                                                <input
+                                                    type="number"
+                                                    name="variant_price[]"
+                                                    class="form-control"
+                                                    value="<?= htmlspecialchars($variant["price"]) ?>"
+                                                    min="0"
+                                                    required>
+                                            </td>
+
+                                            <td>
+                                                <input
+                                                    type="number"
+                                                    name="variant_stock[]"
+                                                    class="form-control"
+                                                    value="<?= htmlspecialchars($variant["stock"]) ?>"
+                                                    min="0"
+                                                    required>
+                                            </td>
+
+                                            <td>
+                                                <select name="variant_status[]" class="form-select">
+                                                    <option
+                                                        value="ACTIVE"
+                                                        <?= $variant["status"] === "ACTIVE" ? "selected" : "" ?>>
+                                                        Đang bán
+                                                    </option>
+
+                                                    <option
+                                                        value="INACTIVE"
+                                                        <?= $variant["status"] === "INACTIVE" ? "selected" : "" ?>>
+                                                        Ngừng bán
+                                                    </option>
+                                                </select>
+                                            </td>
+
+                                            <td class="text-center">
+                                                <input
+                                                    type="checkbox"
+                                                    name="delete_variant[]"
+                                                    value="<?= $variant["id"] ?>"
+                                                    class="form-check-input">
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+
+                                    <?php if (count($variants) === 0): ?>
+                                        <tr>
+                                            <td>
+                                                <span class="badge text-bg-secondary">
+                                                    Tự tạo
+                                                </span>
+
+                                                <input type="hidden" name="variant_id[]" value="">
+                                            </td>
+
+                                            <td>
+                                                <input type="text" name="variant_size[]" class="form-control" placeholder="M" required>
+                                            </td>
+
+                                            <td>
+                                                <input type="text" name="variant_color[]" class="form-control" placeholder="Đen" required>
+                                            </td>
+
+                                            <td>
+                                                <input type="number" name="variant_price[]" class="form-control" placeholder="250000" min="0" required>
+                                            </td>
+
+                                            <td>
+                                                <input type="number" name="variant_stock[]" class="form-control" placeholder="10" min="0" required>
+                                            </td>
+
+                                            <td>
+                                                <select name="variant_status[]" class="form-select">
+                                                    <option value="ACTIVE">Đang bán</option>
+                                                    <option value="INACTIVE">Ngừng bán</option>
+                                                </select>
+                                            </td>
+
+                                            <td></td>
+                                        </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <p class="text-secondary small mb-0">
+                            Ghi chú: Không sửa SKU trực tiếp. Muốn thêm L - Xanh rêu thì bấm “Thêm size/màu”, nhập size L, màu Xanh rêu, giá và tồn kho rồi lưu.
+                        </p>
                     </div>
                 </div>
             </div>
@@ -310,92 +792,125 @@ require_once __DIR__ . "/../includes/header.php";
             <div class="col-lg-4">
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-body p-4">
-                        <h2 class="h4 fw-bold mb-4">Hình ảnh</h2>
+                        <h2 class="h5 fw-bold mb-4">
+                            Hình ảnh sản phẩm
+                        </h2>
 
-                        <div class="mb-3">
-                            <label class="form-label">Link hình ảnh</label>
+                        <?php if (count($images) > 0): ?>
+                            <div class="row g-2 mb-3">
+                                <?php foreach ($images as $image): ?>
+                                    <div class="col-6">
+                                        <div class="border rounded p-2 h-100">
+                                            <img
+                                                src="<?= htmlspecialchars($image["image_url"]) ?>"
+                                                alt="Product image"
+                                                class="img-fluid rounded"
+                                                style="height: 150px; width: 100%; object-fit: cover;">
 
-                            <input
-                                type="file"
-                                name="image"
-                                class="form-control"
-                                accept="image/jpeg,image/png,image/webp">
+                                            <div class="form-check mt-2">
+                                                <input
+                                                    class="form-check-input"
+                                                    type="checkbox"
+                                                    name="delete_image[]"
+                                                    value="<?= $image["id"] ?>"
+                                                    id="delete_image_<?= $image["id"] ?>">
 
-                            <div class="form-text">
-                                Chọn ảnh mới nếu muốn thay đổi hình sản phẩm.
+                                                <label
+                                                    class="form-check-label text-danger small"
+                                                    for="delete_image_<?= $image["id"] ?>">
+                                                    Xóa ảnh này
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
                             </div>
-                        </div>
+                        <?php else: ?>
+                            <p class="text-secondary">
+                                Chưa có hình ảnh.
+                            </p>
+                        <?php endif; ?>
 
-                        <img
-                            src="<?= htmlspecialchars($productImage["image_url"] ?? "https://placehold.co/400x520?text=No+Image") ?>"
-                            alt="Product image"
-                            style="width: 100%; max-height: 320px; object-fit: cover; border-radius: 10px; background: #f1f1f1;">
+                        <label class="form-label">
+                            Thêm hình ảnh mới
+                        </label>
+
+                        <input
+                            type="file"
+                            name="images[]"
+                            class="form-control"
+                            accept="image/*"
+                            multiple> type="file"
+                        name="image"
+                        class="form-control"
+                        accept="image/*">
+
+                        <p class="text-secondary small mb-0 mt-2">
+                            Có thể chọn nhiều hình ảnh cùng lúc. Các ảnh mới sẽ được thêm vào danh sách hình ảnh sản phẩm.
+                        </p>
                     </div>
                 </div>
 
                 <div class="card border-0 shadow-sm">
                     <div class="card-body p-4">
-                        <h2 class="h4 fw-bold mb-4">Biến thể chính</h2>
+                        <button type="submit" class="btn btn-dark w-100 mb-2">
+                            Lưu thay đổi
+                        </button>
 
-                        <div class="mb-3">
-                            <label class="form-label">SKU</label>
-
-                            <input
-                                type="text"
-                                name="sku"
-                                class="form-control"
-                                value="<?= htmlspecialchars($_POST["sku"] ?? $productVariant["sku"] ?? "") ?>"
-                                required>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Size</label>
-
-                            <input
-                                type="text"
-                                name="size"
-                                class="form-control"
-                                value="<?= htmlspecialchars($_POST["size"] ?? $productVariant["size"] ?? "") ?>"
-                                required>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Màu sắc</label>
-
-                            <input
-                                type="text"
-                                name="color"
-                                class="form-control"
-                                value="<?= htmlspecialchars($_POST["color"] ?? $productVariant["color"] ?? "") ?>"
-                                required>
-                        </div>
-
-                        <div class="mb-0">
-                            <label class="form-label">Tồn kho</label>
-
-                            <input
-                                type="number"
-                                name="stock"
-                                class="form-control"
-                                value="<?= htmlspecialchars($_POST["stock"] ?? $productVariant["stock"] ?? 0) ?>"
-                                min="0"
-                                required>
-                        </div>
+                        <a href="index.php" class="btn btn-outline-secondary w-100">
+                            Hủy
+                        </a>
                     </div>
                 </div>
             </div>
         </div>
-
-        <div class="mt-4 d-flex gap-2">
-            <button type="submit" class="btn btn-dark">
-                Cập nhật sản phẩm
-            </button>
-
-            <a href="index.php" class="btn btn-outline-dark">
-                Hủy
-            </a>
-        </div>
     </form>
 </main>
+
+<script>
+    function addVariantRow() {
+        const tbody = document.getElementById("variantRows");
+
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+            <td>
+                <span class="badge text-bg-secondary">Tự tạo</span>
+                <input type="hidden" name="variant_id[]" value="">
+            </td>
+
+            <td>
+                <input type="text" name="variant_size[]" class="form-control" placeholder="L" required>
+            </td>
+
+            <td>
+                <input type="text" name="variant_color[]" class="form-control" placeholder="Xanh rêu" required>
+            </td>
+
+            <td>
+                <input type="number" name="variant_price[]" class="form-control" placeholder="189000" min="0" required>
+            </td>
+
+            <td>
+                <input type="number" name="variant_stock[]" class="form-control" placeholder="50" min="0" required>
+            </td>
+
+            <td>
+                <select name="variant_status[]" class="form-select">
+                    <option value="ACTIVE">Đang bán</option>
+                    <option value="INACTIVE">Ngừng bán</option>
+                </select>
+            </td>
+
+            <td class="text-center">
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()">
+                    Xóa
+                </button>
+            </td>
+        `;
+
+        tbody.appendChild(tr);
+    }
+</script>
 
 <?php require_once __DIR__ . "/../includes/footer.php"; ?>
