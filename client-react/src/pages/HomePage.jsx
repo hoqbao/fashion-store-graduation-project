@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import axiosClient from "../api/axiosClient";
 import Header from "../components/Header";
@@ -11,36 +11,134 @@ const formatPrice = (price) => {
   }).format(Number(price || 0));
 };
 
+const getProductPrice = (product) => {
+  return product.basePrice ?? product.base_price ?? product.price ?? 0;
+};
+
+const getProductDateValue = (product) => {
+  const createdAt = product.createdAt || product.created_at;
+
+  if (createdAt) {
+    const time = new Date(createdAt).getTime();
+
+    if (!Number.isNaN(time)) {
+      return time;
+    }
+  }
+
+  return Number(product.id || 0);
+};
+
+const getSoldCount = (product) => {
+  return Number(
+    product.soldCount ??
+      product.sold_count ??
+      product.totalSold ??
+      product.total_sold ??
+      product.total_sold_quantity ??
+      0,
+  );
+};
+
+const getViewCount = (product) => {
+  return Number(
+    product.viewCount ??
+      product.view_count ??
+      product.views ??
+      product.totalViews ??
+      product.total_views ??
+      0,
+  );
+};
+
+const ProductCard = ({ product }) => {
+  return (
+    <div className="col-12 col-md-6 col-lg-4">
+      <div className="card h-100 border-0 shadow-sm">
+        <img
+          src={product.thumbnail || "https://placehold.co/400x520?text=No+Image"}
+          alt={product.name}
+          className="card-img-top"
+          style={{
+            height: "360px",
+            objectFit: "cover",
+          }}
+        />
+
+        <div className="card-body d-flex flex-column">
+          <p className="text-secondary small mb-2">
+            {product.category?.name ||
+              product.category_name ||
+              "Chưa có danh mục"}
+          </p>
+
+          <h3 className="h5 fw-bold mb-2">{product.name}</h3>
+
+          <p className="text-secondary mb-3">
+            {product.description || "Sản phẩm thời trang chất lượng."}
+          </p>
+
+          <div className="mt-auto d-flex justify-content-between align-items-center">
+            <span className="fw-bold fs-5">
+              {formatPrice(getProductPrice(product))}
+            </span>
+
+            <Link to={`/products/${product.id}`} className="btn btn-dark">
+              Xem chi tiết
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ProductSection = ({ title, subtitle, products, viewMoreUrl }) => {
+  return (
+    <section className="py-5">
+      <div className="container">
+        <div className="text-center mb-4">
+          <p className="text-uppercase text-secondary fw-semibold mb-1">
+            {subtitle}
+          </p>
+
+          <h2 className="fw-bold mb-0">{title}</h2>
+        </div>
+
+        {products.length === 0 ? (
+          <div className="card border-0 shadow-sm">
+            <div className="card-body text-center py-5">
+              <h3 className="h5 fw-bold mb-2">Chưa có sản phẩm</h3>
+              <p className="text-secondary mb-0">
+                Vui lòng thêm sản phẩm trong trang quản trị.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="row g-4">
+              {products.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+
+            <div className="text-center mt-4">
+              <Link to={viewMoreUrl} className="btn btn-outline-dark px-4">
+                Xem thêm
+              </Link>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+};
 function HomePage() {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
 
-  const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [loading, setLoading] = useState(true);
-  const [productLoading, setProductLoading] = useState(false);
   const [error, setError] = useState("");
-
-  const loadProducts = async (categoryId = "") => {
-    try {
-      setProductLoading(true);
-      setError("");
-
-      const url = categoryId
-        ? `/products?categoryId=${categoryId}`
-        : "/products";
-
-      const response = await axiosClient.get(url);
-
-      setProducts(response.data.data || []);
-    } catch (err) {
-      console.error(err);
-      setError(
-        err.response?.data?.message || "Không thể tải danh sách sản phẩm.",
-      );
-    } finally {
-      setProductLoading(false);
-    }
-  };
 
   useEffect(() => {
     const loadHomeData = async () => {
@@ -48,10 +146,13 @@ function HomePage() {
         setLoading(true);
         setError("");
 
-        const categoriesResponse = await axiosClient.get("/categories");
-        setCategories(categoriesResponse.data.data || []);
+        const [categoriesResponse, productsResponse] = await Promise.all([
+          axiosClient.get("/categories"),
+          axiosClient.get("/products"),
+        ]);
 
-        await loadProducts("");
+        setCategories(categoriesResponse.data.data || []);
+        setProducts(productsResponse.data.data || []);
       } catch (err) {
         console.error(err);
         setError(
@@ -65,10 +166,23 @@ function HomePage() {
     loadHomeData();
   }, []);
 
-  const handleCategoryClick = async (categoryId) => {
-    setSelectedCategoryId(categoryId);
-    await loadProducts(categoryId);
-  };
+  const latestProducts = useMemo(() => {
+    return [...products]
+      .sort((a, b) => getProductDateValue(b) - getProductDateValue(a))
+      .slice(0, 6);
+  }, [products]);
+
+  const bestSellingProducts = useMemo(() => {
+    return [...products]
+      .sort((a, b) => getSoldCount(b) - getSoldCount(a))
+      .slice(0, 6);
+  }, [products]);
+
+  const mostViewedProducts = useMemo(() => {
+    return [...products]
+      .sort((a, b) => getViewCount(b) - getViewCount(a))
+      .slice(0, 6);
+  }, [products]);
 
   if (loading) {
     return (
@@ -106,7 +220,7 @@ function HomePage() {
               </p>
 
               <div className="d-flex flex-wrap gap-3 mb-4">
-                <a href="#products" className="btn btn-dark btn-lg px-4">
+                <a href="#latest-products" className="btn btn-dark btn-lg px-4">
                   Mua sắm ngay
                 </a>
 
@@ -176,6 +290,7 @@ function HomePage() {
           </div>
         </div>
       </section>
+
       <section id="categories" className="py-5">
         <div className="container">
           <p className="text-uppercase text-secondary fw-semibold mb-1">
@@ -186,132 +301,55 @@ function HomePage() {
 
           <div className="row g-3">
             <div className="col-6 col-md-4 col-lg-2">
-              <button
-                type="button"
-                className={
-                  selectedCategoryId === ""
-                    ? "btn btn-dark w-100 py-3"
-                    : "btn btn-outline-dark w-100 py-3"
-                }
-                onClick={() => handleCategoryClick("")}
-              >
+              <Link to="/products" className="btn btn-dark w-100 py-3">
                 Tất cả
-              </button>
+              </Link>
             </div>
 
             {categories.map((category) => (
               <div className="col-6 col-md-4 col-lg-2" key={category.id}>
-                <button
-                  type="button"
-                  className={
-                    String(selectedCategoryId) === String(category.id)
-                      ? "btn btn-dark w-100 py-3"
-                      : "btn btn-outline-dark w-100 py-3"
-                  }
-                  onClick={() => handleCategoryClick(category.id)}
+                <Link
+                  to={`/products?categoryId=${category.id}`}
+                  className="btn btn-outline-dark w-100 py-3"
                 >
                   {category.name}
-                </button>
+                </Link>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="products" className="py-5 bg-light">
+      {error && (
         <div className="container">
-          <div className="d-flex justify-content-between align-items-end mb-4">
-            <div>
-              <p className="text-uppercase text-secondary fw-semibold mb-1">
-                Sản phẩm mới
-              </p>
-
-              <h2 className="fw-bold mb-0">
-                {selectedCategoryId
-                  ? "Sản phẩm theo danh mục"
-                  : "Sản phẩm nổi bật"}
-              </h2>
-            </div>
-
-            <span className="text-secondary">{products.length} sản phẩm</span>
-          </div>
-
-          {error && <div className="alert alert-danger">{error}</div>}
-
-          {productLoading && (
-            <div className="text-center py-5">
-              <p className="text-secondary">Đang tải sản phẩm...</p>
-            </div>
-          )}
-
-          {!productLoading && products.length === 0 && (
-            <div className="card border-0 shadow-sm">
-              <div className="card-body text-center py-5">
-                <h3 className="h4 fw-bold">
-                  Chưa có sản phẩm trong danh mục này
-                </h3>
-
-                <p className="text-secondary mb-0">
-                  Vui lòng chọn danh mục khác.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {!productLoading && products.length > 0 && (
-            <div className="row g-4">
-              {products.map((product) => (
-                <div className="col-12 col-md-6 col-lg-4" key={product.id}>
-                  <div className="card h-100 border-0 shadow-sm">
-                    <img
-                      src={
-                        product.thumbnail ||
-                        "https://placehold.co/400x520?text=No+Image"
-                      }
-                      alt={product.name}
-                      className="card-img-top"
-                      style={{
-                        height: "360px",
-                        objectFit: "cover",
-                      }}
-                    />
-
-                    <div className="card-body d-flex flex-column">
-                      <p className="text-secondary small mb-2">
-                        {product.category?.name || "Chưa có danh mục"}
-                      </p>
-
-                      <h3 className="h5 fw-bold mb-2">{product.name}</h3>
-
-                      <p className="text-secondary mb-3">
-                        {product.description ||
-                          "Sản phẩm thời trang chất lượng."}
-                      </p>
-
-                      <div className="mt-auto d-flex justify-content-between align-items-center">
-                        <span className="fw-bold fs-5">
-                          {formatPrice(
-                            product.basePrice ??
-                              product.base_price ??
-                              product.price,
-                          )}
-                        </span>
-
-                        <Link
-                          to={`/products/${product.id}`}
-                          className="btn btn-dark"
-                        >
-                          Xem chi tiết
-                        </Link>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="alert alert-danger">{error}</div>
         </div>
-      </section>
+      )}
+
+      <div id="latest-products">
+        <ProductSection
+          title="Sản phẩm mới nhất"
+          subtitle="New arrivals"
+          products={latestProducts}
+          viewMoreUrl="/products?sort=latest"
+        />
+      </div>
+
+      <div className="bg-light">
+        <ProductSection
+          title="Sản phẩm bán chạy"
+          subtitle="Best seller"
+          products={bestSellingProducts}
+          viewMoreUrl="/products?sort=best-selling"
+        />
+      </div>
+
+      <ProductSection
+        title="Sản phẩm được xem nhiều nhất"
+        subtitle="Most viewed"
+        products={mostViewedProducts}
+        viewMoreUrl="/products?sort=most-viewed"
+      />
 
       <Footer />
     </div>

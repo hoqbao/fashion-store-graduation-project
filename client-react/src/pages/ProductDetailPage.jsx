@@ -11,6 +11,10 @@ const formatPrice = (price) => {
   }).format(Number(price || 0));
 };
 
+const normalizeText = (value) => {
+  return String(value || "").trim().toLowerCase();
+};
+
 function ProductDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -40,15 +44,23 @@ function ProductDetailPage() {
 
         setProduct(productData);
 
-        const firstVariant = productData.variants?.[0];
+        const activeVariants =
+          productData.variants?.filter(
+            (variant) => variant.status === "ACTIVE",
+          ) || [];
+
+        const firstVariant = activeVariants[0];
 
         if (firstVariant) {
-          setSelectedColor(firstVariant.color);
-          setSelectedSize(firstVariant.size);
+          setSelectedColor(String(firstVariant.color || "").trim());
+          setSelectedSize(String(firstVariant.size || "").trim());
         }
 
         const firstImage =
-          productData.images?.[0]?.image_url || productData.thumbnail || "";
+          productData.images?.[0]?.imageUrl ||
+          productData.images?.[0]?.image_url ||
+          productData.thumbnail ||
+          "";
 
         setSelectedImage(firstImage);
         setQuantity(1);
@@ -68,59 +80,81 @@ function ProductDetailPage() {
     loadProductDetail();
   }, [id]);
 
-  const colors = useMemo(() => {
+  const activeVariants = useMemo(() => {
     if (!product?.variants) {
       return [];
     }
 
-    return [...new Set(product.variants.map((variant) => variant.color))];
+    return product.variants.filter((variant) => variant.status === "ACTIVE");
   }, [product]);
 
+  const colors = useMemo(() => {
+    const colorMap = new Map();
+
+    activeVariants.forEach((variant) => {
+      const color = String(variant.color || "").trim();
+
+      if (color) {
+        colorMap.set(normalizeText(color), color);
+      }
+    });
+
+    return [...colorMap.values()];
+  }, [activeVariants]);
+
   const sizes = useMemo(() => {
-    if (!product?.variants || !selectedColor) {
+    if (!selectedColor) {
       return [];
     }
 
-    return [
-      ...new Set(
-        product.variants
-          .filter((variant) => variant.color === selectedColor)
-          .map((variant) => variant.size),
-      ),
-    ];
-  }, [product, selectedColor]);
+    const sizeMap = new Map();
+
+    activeVariants
+      .filter(
+        (variant) =>
+          normalizeText(variant.color) === normalizeText(selectedColor),
+      )
+      .forEach((variant) => {
+        const size = String(variant.size || "").trim();
+
+        if (size) {
+          sizeMap.set(normalizeText(size), size);
+        }
+      });
+
+    return [...sizeMap.values()];
+  }, [activeVariants, selectedColor]);
 
   const selectedVariant = useMemo(() => {
-    if (!product?.variants) {
-      return null;
-    }
-
-    return product.variants.find(
+    return activeVariants.find(
       (variant) =>
-        variant.color === selectedColor && variant.size === selectedSize,
+        normalizeText(variant.color) === normalizeText(selectedColor) &&
+        normalizeText(variant.size) === normalizeText(selectedSize),
     );
-  }, [product, selectedColor, selectedSize]);
+  }, [activeVariants, selectedColor, selectedSize]);
 
   const currentPrice = selectedVariant
     ? selectedVariant.price
-    : product?.base_price;
+    : product?.basePrice ?? product?.base_price;
 
   const maxStock = selectedVariant ? Number(selectedVariant.stock) : 0;
 
   const handleColorChange = (color) => {
-    setSelectedColor(color);
+    const cleanColor = String(color || "").trim();
 
-    const firstSizeOfColor = product.variants.find(
-      (variant) => variant.color === color,
-    )?.size;
+    setSelectedColor(cleanColor);
 
-    setSelectedSize(firstSizeOfColor || "");
+    const firstVariantOfColor = activeVariants.find(
+      (variant) => normalizeText(variant.color) === normalizeText(cleanColor),
+    );
+
+    setSelectedSize(String(firstVariantOfColor?.size || "").trim());
     setQuantity(1);
     setCartMessage("");
   };
 
   const handleSizeChange = (size) => {
-    setSelectedSize(size);
+    setSelectedSize(String(size || "").trim());
     setQuantity(1);
     setCartMessage("");
   };
@@ -212,6 +246,7 @@ function ProductDetailPage() {
   return (
     <div>
       <Header />
+
       <main className="py-5">
         <div className="container">
           <Link to="/" className="btn btn-outline-secondary btn-sm mb-4">
@@ -222,7 +257,11 @@ function ProductDetailPage() {
             <div className="col-12 col-lg-6">
               <div className="border rounded overflow-hidden bg-light">
                 <img
-                  src={selectedImage || product.thumbnail}
+                  src={
+                    selectedImage ||
+                    product.thumbnail ||
+                    "https://placehold.co/600x760?text=No+Image"
+                  }
                   alt={product.name}
                   className="w-100"
                   style={{
@@ -232,18 +271,19 @@ function ProductDetailPage() {
                 />
               </div>
 
-              <div className="d-flex gap-2 mt-3 flex-wrap">
-                {product.images?.length > 1 && (
-                  <div className="d-flex gap-2 mt-3">
-                    {product.images.map((image) => (
+              {product.images?.length > 1 && (
+                <div className="d-flex gap-2 mt-3 flex-wrap">
+                  {product.images.map((image) => {
+                    const imageUrl =
+                      image.imageUrl ||
+                      image.image_url ||
+                      product.thumbnail ||
+                      "https://placehold.co/100x130?text=No+Image";
+
+                    return (
                       <img
                         key={image.id}
-                        src={
-                          image.imageUrl ||
-                          image.image_url ||
-                          product.thumbnail ||
-                          "https://placehold.co/100x130?text=No+Image"
-                        }
+                        src={imageUrl}
                         alt={product.name}
                         style={{
                           width: "80px",
@@ -251,19 +291,17 @@ function ProductDetailPage() {
                           objectFit: "cover",
                           borderRadius: "8px",
                           cursor: "pointer",
+                          border:
+                            selectedImage === imageUrl
+                              ? "2px solid #212529"
+                              : "1px solid #dee2e6",
                         }}
-                        onClick={() =>
-                          setSelectedImage(
-                            image.imageUrl ||
-                              image.image_url ||
-                              product.thumbnail,
-                          )
-                        }
+                        onClick={() => setSelectedImage(imageUrl)}
                       />
-                    ))}
-                  </div>
-                )}{" "}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="col-12 col-lg-6">
@@ -283,12 +321,18 @@ function ProductDetailPage() {
                 <p className="fw-semibold mb-2">Màu sắc</p>
 
                 <div className="d-flex gap-2 flex-wrap">
+                  {colors.length === 0 && (
+                    <p className="text-secondary mb-0">
+                      Sản phẩm chưa có màu đang bán.
+                    </p>
+                  )}
+
                   {colors.map((color) => (
                     <button
                       key={color}
                       type="button"
                       className={`btn ${
-                        selectedColor === color
+                        normalizeText(selectedColor) === normalizeText(color)
                           ? "btn-dark"
                           : "btn-outline-dark"
                       }`}
@@ -304,12 +348,20 @@ function ProductDetailPage() {
                 <p className="fw-semibold mb-2">Kích thước</p>
 
                 <div className="d-flex gap-2 flex-wrap">
+                  {sizes.length === 0 && (
+                    <p className="text-secondary mb-0">
+                      Chưa có size cho màu đang chọn.
+                    </p>
+                  )}
+
                   {sizes.map((size) => (
                     <button
                       key={size}
                       type="button"
                       className={`btn ${
-                        selectedSize === size ? "btn-dark" : "btn-outline-dark"
+                        normalizeText(selectedSize) === normalizeText(size)
+                          ? "btn-dark"
+                          : "btn-outline-dark"
                       }`}
                       onClick={() => handleSizeChange(size)}
                     >

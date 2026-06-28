@@ -8,6 +8,7 @@ import OrderSuccessPage from "./pages/OrderSuccessPage";
 import MyOrdersPage from "./pages/MyOrdersPage";
 import OrderDetailPage from "./pages/OrderDetailPage";
 import RegisterPage from "./pages/RegisterPage";
+import ProductListPage from "./pages/ProductListPage";
 
 function App() {
     return (
@@ -20,6 +21,7 @@ function App() {
                 <Route path="/my-orders" element={<MyOrdersPage />} />
                 <Route path="/my-orders/:orderCode" element={<OrderDetailPage />} />
                 <Route path="/register" element={<RegisterPage />} />
+                <Route path="/products" element={<ProductListPage />} />
                 <Route
                     path="/order-success"
                     element={<OrderSuccessPage />}

@@ -495,7 +495,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             $pdo->commit();
 
-            header("Location: edit.php?id=" . $id . "&success=updated");
+            header("Location: index.php?success=updated");
             exit;
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -540,6 +540,12 @@ require_once __DIR__ . "/../includes/header.php";
         <div class="alert alert-success">
             <?= htmlspecialchars($success) ?>
         </div>
+
+        <script>
+            setTimeout(function() {
+                window.location.href = "index.php";
+            }, 1500);
+        </script>
     <?php endif; ?>
 
     <form method="POST" enctype="multipart/form-data">
